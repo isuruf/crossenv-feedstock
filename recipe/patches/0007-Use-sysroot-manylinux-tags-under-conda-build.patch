@@ -1,0 +1,70 @@
+Under conda-build, accept the manylinux tags supported by the sysroot's glibc.
+
+crossenv 1.6.0 applies its packaging.tags patch to pip's vendored copy too, so
+without --platform-tag pip only accepts linux_<arch> wheels. conda-build
+recipes build wheels, repair them with auditwheel to manylinux and install
+them into the host environment, which now fails with
+
+    ERROR: <name>-manylinux2014_aarch64.whl is not a supported wheel on this platform.
+
+When CONDA_BUILD=1 and no platform tags are given, read the glibc version from
+<sysroot>/usr/include/features.h and use linux_<arch>, manylinux_2_<N>_<arch>
+for all N up to it, and the legacy manylinux aliases as the platform tags.
+This also sets the glibc version reported by confstr to the sysroot's.
+
+diff --git a/crossenv/__init__.py b/crossenv/__init__.py
+index 38f23d4..4e7a8c2 100644
+--- a/crossenv/__init__.py
++++ b/crossenv/__init__.py
+@@ -627,12 +627,51 @@ class CrossEnvBuilder(venv.EnvBuilder):
+             "watchos": "Darwin",
+         }.get(self.host_sys_platform, self.host_sys_platform.title())
+ 
++    def conda_build_platform_tags(self):
++        """
++        Platform tags for conda-build, which builds manylinux wheels and
++        installs them into the host environment. Accept the manylinux tags
++        supported by the glibc in the sysroot.
++        """
++        if self.host_sys_platform != "linux" or not self.host_sysroot:
++            return ()
++        features_h = os.path.join(self.host_sysroot, "usr", "include", "features.h")
++        try:
++            with open(features_h) as fp:
++                m = re.search(r"^#define\s+__GLIBC_MINOR__\s+(\d+)", fp.read(), re.M)
++        except OSError:
++            return ()
++        if not m:
++            return ()
++
++        glibc_minor = int(m.group(1))
++        arch = self.host_machine
++        # manylinux2014 is the oldest manylinux tag for architectures other than x86
++        min_glibc_minor = 5 if arch in ("x86_64", "i686") else 17
++        tags = [f"linux_{arch}"]
++        for minor in range(glibc_minor, min_glibc_minor - 1, -1):
++            tags.append(f"manylinux_2_{minor}_{arch}")
++        if glibc_minor >= 17:
++            tags.append(f"manylinux2014_{arch}")
++        if glibc_minor >= 12 and min_glibc_minor <= 12:
++            tags.append(f"manylinux2010_{arch}")
++        if min_glibc_minor <= 5:
++            tags.append(f"manylinux1_{arch}")
++        return tags
++
+     def expand_platform_tags(self):
+         """
+         Convert legacy manylinux tags to PEP600, because pip only looks for one
+         or the other
+         """
+ 
++        if (
++            not self.platform_tags
++            and not self.manylinux_tags
++            and os.environ.get("CONDA_BUILD") == "1"
++        ):
++            self.platform_tags = self.conda_build_platform_tags()
++
+         platform_tags = set(self.platform_tags)
+         platform_tags.update(self.manylinux_tags)
+         extra_tags = set()

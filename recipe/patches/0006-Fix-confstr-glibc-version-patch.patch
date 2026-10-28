@@ -1,0 +1,26 @@
+Fix the confstr glibc version patch.
+
+os-patch.py.tmpl patched confstr("CS_GLIBC_LIB_VERSION"), which is not a valid
+name. pip, packaging, platform and subprocess query "CS_GNU_LIBC_VERSION", so
+the patch never applied and the build machine's glibc version leaked into the
+cross environment. The returned value also used "glibc_2_17", while callers
+expect "<name> <major>.<minor>", e.g. "glibc 2.17".
+
+diff --git a/crossenv/scripts/os-patch.py.tmpl b/crossenv/scripts/os-patch.py.tmpl
+index 6f06e25..1774ab9 100644
+--- a/crossenv/scripts/os-patch.py.tmpl
++++ b/crossenv/scripts/os-patch.py.tmpl
+@@ -26,11 +26,11 @@ _original_confstr = confstr
+ 
+ 
+ def confstr(name):
+-    if name == "CS_GLIBC_LIB_VERSION":
++    if name == "CS_GNU_LIBC_VERSION":
+         version = {{repr(self.effective_glibc)}}
+         if version is None:
+             return "unknown 0.0"
+         else:
+-            return "glibc_{}_{}".format(*version)
++            return "glibc {}.{}".format(*version)
+     else:
+         return _original_confstr(name)

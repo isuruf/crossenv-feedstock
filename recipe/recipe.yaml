@@ -14,9 +14,11 @@ source:
   patches:
     - patches/0004-Only-set-sys.executable-while-cross-python-exists.patch
     - patches/0005-Accept-any-Apple-OS-name-in-the-triple-split.patch
+    - patches/0006-Fix-confstr-glibc-version-patch.patch
+    - patches/0007-Use-sysroot-manylinux-tags-under-conda-build.patch
 
 build:
-  number: 1
+  number: 2
   noarch: python
   script: ${{ PYTHON }} -m pip install . -vv
 
@@ -28,6 +30,7 @@ requirements:
     - hatchling
   run:
     - python >=${{ python_min }}
+    - wheel
 
 tests:
   - python:
